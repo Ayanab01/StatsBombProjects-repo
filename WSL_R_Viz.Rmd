@@ -1,0 +1,235 @@
+---
+title: "Messi Viz Project"
+author: "Christian Azumah"
+date: "2023-02-13"
+output: html_document
+---
+
+#Importing the Data
+
+Step 1 - Install the packages that will be used.
+
+```{r}
+install.packages("devtools")
+install.packages("remotes")
+```
+
+```{r}
+install.packages("cli")
+```
+
+```{r}
+install.packages("purrr")
+```
+
+```{r}
+install.packages("extrafont")
+```
+
+
+Step 1a - Use 'remote package' to install all the tools to be used. 
+
+```{r}
+remotes::install_version("SDMTools", "1.1-221")
+```
+
+Step 1b - Install StatsBombR Package. 
+
+```{r}
+devtools::install_github("statsbomb/StatsBombR")
+```
+
+```{r}
+my_packages <- library()$results[,1]
+head(my_packages, 10)
+```
+
+Step 2 - Load the Packages which will be used. 
+
+```{r}
+library(tidyverse)
+library(devtools)
+library(ggplot2)
+library(StatsBombR)
+```
+
+##Importing the Data and Creating a DataFrame
+ 
+```{r}
+FAWSL <- FreeCompetitions()%>%
+  filter(competition_id==37 & season_name=="2020/2021")
+```
+
+```{r}
+Matches <- FreeMatches(FAWSL)
+```
+
+```{r}
+StatsBombData_FAWSL <- free_allevents(MatchesDF = Matches,Parallel = T)
+```
+
+```{r}
+StatsBombData_FAWSL = allclean(StatsBombData_FAWSL)
+```
+
+```{r}
+names(StatsBombData_FAWSL)
+```
+
+#Data Exploration (Goals & Shots)
+
+This next section is going to explore the Data Use Cases involving Goals & Shots.
+
+##Extracting Goals & Shots
+
+The first thing to do would be to group the data by team, so that operations are handled on a team by team basis. The summarise function then takes that operation and produces a new separate table out of it.
+
+```{r}
+shots_goals = StatsBombData_FAWSL %>%
+  group_by(team.name) %>%
+  summarise(shots = sum(type.name == "Shot", na.rm = TRUE),
+            goals = sum(shot.outcome.name == "Goal", na.rm = TRUE))
+```
+
+The table (shots_goals) produced above shows the shots and goals total for each team. 
+
+To investigate on a per game basis the code above can be modified using n_distinct from the dplyr package. 
+
+```{r}
+shots_goals_pg = StatsBombData_FAWSL %>%
+  group_by(team.name) %>%
+  summarise(shots = sum(type.name == "Shot", na.rm = TRUE)/n_distinct(match_id),
+            goals = sum(shot.outcome.name == "Goal", na.rm = TRUE)/n_distinct(match_id))
+```
+
+##Transformation into a Chart
+
+```{r}
+ggplot(data = shots_goals_pg,
+       aes(x = reorder(team.name,shots), y = shots)) +
+  geom_bar(stat = "identity", width = 0.5) +
+  labs(y = "Shots") +
+  theme(axis.title.y = element_blank()) +
+  scale_y_continuous(expand = c(0,0)) +
+  coord_flip() +
+  theme_SB()
+```
+
+##Player Shots per 90
+
+```{r}
+player_shots = StatsBombData_FAWSL %>%
+  group_by(player.name, player.id) %>%
+  summarise(shots = sum(type.name == "Shot", na.rm = TRUE))
+```
+
+Here we've done the Same calculation as above, done with regards to Player Shots. Included player.id as will be needed later. 
+
+```{r}
+player_minutes = get.minutesplayed(StatsBombData_FAWSL)
+```
+
+```{r}
+player_minutes = player_minutes %>%
+  group_by(player.id) %>%
+  summarise(minutes = sum(MinutesPlayed))
+```
+
+Above we get the player minutes and summarize the new outputs. 
+
+```{r}
+player_shots = left_join(player_shots, player_minutes)
+```
+Next we join Player Shots with Player minutes.
+
+```{r}
+player_shots = player_shots %>% mutate(nineties = minutes/90)
+```
+
+Then 
+
+```{r}
+player_shots = player_shots %>% mutate(shots_per90 = shots/nineties)
+```
+
+And Finally. 
+
+##Plotting Passes
+
+```{r}
+devtools::install_github("FCrSTATS/SBpitch")
+```
+
+```{r}
+library(SBpitch)
+```
+
+Next we are going to extract passes from Viv. 
+
+```{r}
+wsldata <- free_allevents(MatchesDF = Matches,Parallel = T)
+```
+
+```{r}
+library(SBpitch)
+
+passes = wsldata %>% 
+  filter(type.name=="Pass" & is.na(pass.outcome.name) & 
+           player.id==15623) %>%
+  filter(pass.end_location.x >= 102 & pass.end_location.y<=62 &
+pass.end_location.y>=18)
+
+create_Pitch() +
+  geom_segment(data = passes,aes(x=location.x,y=location.y,
+                                 xend=pass.end_location.x, yend=pass.end_location.y),
+               lineend = "round",size=0.5,colour="#000000", arrow = 
+                 arrow(length = unit(0.07, "inches"), ends = "last", type = "open")) +
+  labs(title = "Vivianne Miedema, Completed Box Passes", subtitle = "WSL,2020-21") +
+  scale_y_reverse() +
+  coord_fixed(ratio = 105/100)
+```
+
+```{r}
+passes = wsldata %>% 
+  filter(type.name=="Pass" & is.na(pass.outcome.name) & 
+           player.id==15623)
+```
+
+```{r}
+filter(passes, pass.end.location.x >= 102 & pass.end_location.y <= 62 & pass.end_location.y >= 18)
+```
+
+
+
+
+
+
+
+
+```{r}
+library(SBpitch) 
+
+passes = wsldata %>%
+  filter(type.name=="Pass" & !is.na(pass.outcome.name) &
+           player.id==4641) %>%
+  filter(pass.end_location.x >= 102 & pass.end_location.y <= 62 &
+           pass.end_location.y >= 18) 
+
+create_Pitch() +
+  geom_segment(data = passes, aes(x = location.x, y = location.y,
+                                  xend = pass.end_location.x, yend = pass.end_location.y),
+               lineend = "round", size = 0.5, colour = "#000000", arrow =
+                 arrow(length = unit(0.07, "inches"), ends = "last", type = "open")) +
+  labs(title = "Fran Kirby, Completed Box Passes", subtitle = "WSL,
+       2020-21") +
+  scale_y_reverse() +
+  coord_fixed(ratio = 105/100)
+```
+
+
+
+
+
+
+
+
